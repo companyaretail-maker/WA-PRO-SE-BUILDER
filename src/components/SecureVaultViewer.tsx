@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -17,6 +17,21 @@ interface SecureVaultViewerProps {
 export const SecureVaultViewer: React.FC<SecureVaultViewerProps> = ({ pdfBytes }) => {
   const [numPages, setNumPages] = useState<number>(0);
   const [pdfDataUrl, setPdfDataUrl] = useState<string | null>(null);
+  // A fixed 600px page overflows the preview column on narrower layouts and
+  // clips the left edge of the pleading, caption included. Track the container.
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [pageWidth, setPageWidth] = useState(600);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(([entry]) => {
+      const available = entry.contentRect.width;
+      if (available > 0) setPageWidth(Math.min(600, Math.floor(available)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [pdfDataUrl]);
 
   useEffect(() => {
     if (pdfBytes) {
@@ -30,11 +45,18 @@ export const SecureVaultViewer: React.FC<SecureVaultViewerProps> = ({ pdfBytes }
     }
   }, [pdfBytes]);
 
-  if (!pdfDataUrl) return <div className="text-white p-4 font-mono text-xs animate-pulse">Initializing Document Generation Engine...</div>;
+  if (!pdfDataUrl) {
+    return (
+      <div ref={containerRef} className="w-full text-white p-4 font-mono text-xs animate-pulse">
+        Initializing Document Generation Engine...
+      </div>
+    );
+  }
 
   return (
-    <div 
-      className="vault-viewer select-none pointer-events-none relative flex flex-col items-center" 
+    <div
+      ref={containerRef}
+      className="vault-viewer w-full max-w-full select-none pointer-events-none relative flex flex-col items-center" 
       style={{ userSelect: 'none', WebkitUserSelect: 'none' }}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -50,7 +72,7 @@ export const SecureVaultViewer: React.FC<SecureVaultViewerProps> = ({ pdfBytes }
               renderTextLayer={false}
               renderAnnotationLayer={false}
               className="mb-4 shadow-[0_0_15px_rgba(0,0,0,0.5)] border border-ink-faint rounded"
-              width={600}
+              width={pageWidth}
             />
           </div>
         ))}
