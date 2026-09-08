@@ -15,12 +15,15 @@ import {
   CountySelectionModal, LegalAssistantChat, BannerLogo, LegalPoliciesModal
 } from './components/index';
 import { DayCountCalculator } from './components/DayCountCalculator';
+import { RestorePurchaseModal } from './components/RestorePurchaseModal';
+import { FormsChecklist } from './components/FormsChecklist';
 
 function AppContent() {
   const [activeModule, setActiveModule] = useState('screener');
   const [selectedCounty, setSelectedCounty] = useState('king');
   const [isCountyModalOpen, setIsCountyModalOpen] = useState(false);
   const [isTermsModalOpen, setIsTermsModalOpen] = useState(false);
+  const [isRestoreOpen, setIsRestoreOpen] = useState(false);
   const [legalModalState, setLegalModalState] = useState<{isOpen: boolean, tab: 'gr24' | 'terms' | 'privacy'}>({ isOpen: false, tab: 'gr24' });
   const { user, login, logout, role } = useAuth();
 
@@ -72,21 +75,26 @@ function AppContent() {
       {/* Sidebar Nav (Left) */}
       <aside className="hidden lg:block border-r border-ink-faint overflow-y-auto p-4 bg-bg">
         <div className="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted mb-4 px-3">Terminal / Tools</div>
-        <DocumentRouter 
-          activeModule={activeModule} 
-          onSelectModule={setActiveModule} 
-          selectedCounty={selectedCounty}
-          onOpenCountyModal={() => setIsCountyModalOpen(true)}
+        <DocumentRouter
+          activeModule={activeModule}
+          onSelectModule={setActiveModule}
         />
       </aside>
 
       {/* Mobile Nav (Horizontal scroll, shown on small screens) */}
       <div className="lg:hidden shrink-0 border-b border-ink-faint bg-bg z-30">
-        <DocumentRouter 
-          activeModule={activeModule} 
-          onSelectModule={setActiveModule} 
-          selectedCounty={selectedCounty}
-          onOpenCountyModal={() => setIsCountyModalOpen(true)}
+        <div className="flex items-center justify-between gap-2 px-3 pt-2">
+          <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-ink-muted">Jurisdiction</span>
+          <button
+            onClick={() => setIsCountyModalOpen(true)}
+            className="font-mono text-[10px] uppercase text-accent border border-accent/50 px-2 py-1 cursor-pointer truncate max-w-[60%]"
+          >
+            {getCountyName(selectedCounty)} — Change
+          </button>
+        </div>
+        <DocumentRouter
+          activeModule={activeModule}
+          onSelectModule={setActiveModule}
         />
       </div>
 
@@ -120,6 +128,7 @@ function AppContent() {
             onPurchaseComplete={handlePurchaseComplete}
           />
         )}
+        {activeModule === 'forms' && <FormsChecklist selectedCounty={selectedCounty} />}
         {activeModule === 'summons' && <SummonsEngine />}
         {activeModule === 'service' && <ServiceEngine />}
         {activeModule === 'hearing' && <HearingEngine />}
@@ -167,6 +176,14 @@ function AppContent() {
           >
             {entitlementToken ? 'Download Documents' : 'Access Documents'}
           </button>
+          {!entitlementToken && (
+            <button
+              onClick={() => setIsRestoreOpen(true)}
+              className="w-full mt-2 text-ink-muted hover:text-accent font-mono text-[10px] uppercase tracking-wider cursor-pointer transition-colors"
+            >
+              Already paid? Restore
+            </button>
+          )}
         </div>
       </aside>
 
@@ -197,6 +214,11 @@ function AppContent() {
         isOpen={isTermsModalOpen}
         onClose={() => setIsTermsModalOpen(false)}
         onUnlocked={handlePurchaseComplete}
+      />
+      <RestorePurchaseModal
+        isOpen={isRestoreOpen}
+        onClose={() => setIsRestoreOpen(false)}
+        onRestored={handlePurchaseComplete}
       />
       <LegalPoliciesModal 
         isOpen={legalModalState.isOpen}

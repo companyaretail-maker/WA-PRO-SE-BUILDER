@@ -15,7 +15,15 @@ const FLAG_STYLE: Record<DynamicFlag['type'], { border: string; text: string; Ic
   info: { border: 'border-accent/40', text: 'text-accent', Icon: Info },
 };
 
-export const ReadinessCheck: React.FC<any> = ({ onProceedToDeclaration, selectedCounty = 'king' }) => {
+interface ReadinessCheckProps {
+  onProceedToDeclaration?: () => void;
+  selectedCounty?: string;
+}
+
+export const ReadinessCheck: React.FC<ReadinessCheckProps> = ({
+  onProceedToDeclaration,
+  selectedCounty = 'king',
+}) => {
   const [answers, setAnswers] = useState<Answer[]>([]);
   const [finished, setFinished] = useState(false);
 

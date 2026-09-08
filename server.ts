@@ -17,13 +17,38 @@ const CATALOG: Record<string, { amount: string; description: string }> = {
 
 const ENTITLEMENT_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
+/** Only the fields this server actually reads off a PayPal response. */
+interface PayPalAmount {
+  value?: string;
+  currency_code?: string;
+}
+interface PayPalCapture {
+  id?: string;
+  amount?: PayPalAmount;
+}
+interface PayPalOrder {
+  id?: string;
+  status?: string;
+  name?: string;
+  purchase_units?: {
+    reference_id?: string;
+    payments?: { captures?: PayPalCapture[] };
+  }[];
+}
+
+/** Narrows an unknown catch binding to a loggable message. */
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function entitlementSecret(): string {
   const secret = process.env.SESSION_SECRET;
   if (secret && secret !== "YOUR_SESSION_SECRET") return secret;
   // Ephemeral secret: tokens stop verifying on restart, which is the safe
   // failure direction. Configure SESSION_SECRET in production.
   console.warn("SESSION_SECRET is not set; entitlement tokens will not survive a restart.");
-  return (globalThis as any).__ephemeralSecret ||= crypto.randomBytes(32).toString("hex");
+  const g = globalThis as typeof globalThis & { __ephemeralSecret?: string };
+  return (g.__ephemeralSecret ||= crypto.randomBytes(32).toString("hex"));
 }
 
 function signEntitlement(payload: { sku: string; orderId: string; captureId: string }): string {
@@ -77,7 +102,7 @@ async function paypalToken(): Promise<string> {
     },
     body: "grant_type=client_credentials",
   });
-  const data: any = await res.json();
+  const data = (await res.json()) as { access_token?: string };
   if (!res.ok || !data.access_token) {
     throw new Error(`PayPal token request failed (${res.status})`);
   }
@@ -108,9 +133,10 @@ function normalizeChatHistory(history: unknown): { role: "user" | "model"; parts
   if (!Array.isArray(history)) throw new Error("history must be an array");
   const cleaned = history
     .slice(-MAX_CHAT_MESSAGES)
-    .map((m: any) => {
-      const text = String(m?.parts?.[0]?.text ?? "").slice(0, MAX_CHAT_CHARS);
-      return { role: m?.role === "user" ? ("user" as const) : ("model" as const), parts: [{ text }] };
+    .map((m: unknown) => {
+      const msg = m as { role?: unknown; parts?: { text?: unknown }[] };
+      const text = String(msg?.parts?.[0]?.text ?? "").slice(0, MAX_CHAT_CHARS);
+      return { role: msg?.role === "user" ? ("user" as const) : ("model" as const), parts: [{ text }] };
     })
     .filter((m) => m.parts[0].text.length > 0);
   // Gemini rejects a conversation that opens on a model turn (the canned greeting).
@@ -157,7 +183,7 @@ async function startServer() {
           `"webhook_id":${JSON.stringify(webhookId)},` +
           `"webhook_event":${rawBody}}`,
       });
-      const verification: any = await verifyRes.json();
+      const verification = (await verifyRes.json()) as { verification_status?: string };
       if (verification.verification_status !== "SUCCESS") {
         console.error("Webhook signature verification failed:", verification.verification_status);
         res.status(400).send("Invalid signature");
@@ -175,8 +201,8 @@ async function startServer() {
         );
       }
       res.status(200).send("Webhook received");
-    } catch (err: any) {
-      console.error("Webhook error:", err?.message);
+    } catch (err) {
+      console.error("Webhook error:", errorMessage(err));
       res.status(500).send("Webhook processing error");
     }
   };
@@ -208,8 +234,8 @@ and point the user to the county family law facilitator or a licensed attorney.`
       });
 
       res.json({ text: response.text });
-    } catch (error: any) {
-      console.error("Chat error:", error?.message);
+    } catch (error) {
+      console.error("Chat error:", errorMessage(error));
       res.status(500).json({ error: "The assistant could not answer that request." });
     }
   });
@@ -249,15 +275,15 @@ and point the user to the county family law facilitator or a licensed attorney.`
           ],
         }),
       });
-      const orderData: any = await orderRes.json();
+      const orderData = (await orderRes.json()) as PayPalOrder;
       if (!orderRes.ok || !orderData.id) {
         console.error("PayPal order creation failed:", orderRes.status, orderData?.name);
         res.status(502).json({ error: "Could not create the PayPal order." });
         return;
       }
       res.json({ id: orderData.id });
-    } catch (err: any) {
-      console.error("Create order error:", err?.message);
+    } catch (err) {
+      console.error("Create order error:", errorMessage(err));
       res.status(500).json({ error: "Could not create the PayPal order." });
     }
   });
@@ -282,7 +308,7 @@ and point the user to the county family law facilitator or a licensed attorney.`
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       });
-      const capture: any = await captureRes.json();
+      const capture = (await captureRes.json()) as PayPalOrder;
 
       if (capture.status !== "COMPLETED") {
         res.status(402).json({ error: "Payment was not completed.", status: capture.status ?? "UNKNOWN" });
@@ -305,9 +331,59 @@ and point the user to the county family law facilitator or a licensed attorney.`
         status: "COMPLETED",
         sku,
       });
-    } catch (err: any) {
-      console.error("Checkout confirm error:", err?.message);
+    } catch (err) {
+      console.error("Checkout confirm error:", errorMessage(err));
       res.status(500).json({ error: "Payment confirmation failed." });
+    }
+  });
+
+  /**
+   * Re-issues an entitlement from a PayPal order ID.
+   *
+   * There is no user database, so PayPal is the system of record. This reads the
+   * order back, confirms it is captured for a catalog price, and signs a fresh
+   * token -- which is what makes a cleared browser or a second device
+   * recoverable rather than a lost sale.
+   */
+  app.post("/api/entitlement/restore", rateLimiter(10, 60_000), async (req, res) => {
+    try {
+      const { orderId } = req.body ?? {};
+      if (typeof orderId !== "string" || !orderId.trim()) {
+        res.status(400).json({ error: "An order ID is required." });
+        return;
+      }
+      const { configured, baseUrl } = paypalConfig();
+      if (!configured) {
+        res.status(503).json({ error: "Payments are not configured on this server." });
+        return;
+      }
+
+      const token = await paypalToken();
+      const orderRes = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(orderId.trim())}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const order = (await orderRes.json()) as PayPalOrder;
+      if (!orderRes.ok || order.status !== "COMPLETED") {
+        res.status(404).json({ error: "No completed payment found for that order ID." });
+        return;
+      }
+
+      const unit = order.purchase_units?.[0];
+      const paid = unit?.payments?.captures?.[0];
+      const sku = String(unit?.reference_id ?? "");
+      const item = CATALOG[sku];
+      if (!item || paid?.amount?.value !== item.amount || paid?.amount?.currency_code !== "USD") {
+        res.status(402).json({ error: "That order does not match a current product." });
+        return;
+      }
+
+      res.json({
+        token: signEntitlement({ sku, orderId: orderId.trim(), captureId: paid?.id ?? "" }),
+        sku,
+      });
+    } catch (err) {
+      console.error("Entitlement restore error:", errorMessage(err));
+      res.status(500).json({ error: "Could not restore that purchase." });
     }
   });
 
@@ -327,14 +403,14 @@ and point the user to the county family law facilitator or a licensed attorney.`
       const statusRes = await fetch(`${baseUrl}/v2/checkout/orders/${encodeURIComponent(req.params.orderId)}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data: any = await statusRes.json();
+      const data = (await statusRes.json()) as PayPalOrder;
       if (!statusRes.ok) {
         res.status(502).json({ error: "Could not read order status." });
         return;
       }
       res.json({ status: data.status, orderId: data.id });
-    } catch (err: any) {
-      console.error("Order status error:", err?.message);
+    } catch (err) {
+      console.error("Order status error:", errorMessage(err));
       res.status(500).json({ error: "Could not read order status." });
     }
   });
@@ -357,8 +433,8 @@ and point the user to the county family law facilitator or a licensed attorney.`
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Disposition", 'attachment; filename="WA_ProSe_Packet.pdf"');
       res.send(Buffer.from(bytes));
-    } catch (err: any) {
-      console.error("Packet render error:", err?.message);
+    } catch (err) {
+      console.error("Packet render error:", errorMessage(err));
       res.status(500).json({ error: "Could not render the packet." });
     }
   });

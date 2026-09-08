@@ -5,6 +5,8 @@ import { SecureVaultViewer } from './SecureVaultViewer';
 import { PayPalCheckout } from './PayPalCheckout';
 import { generateDraftPleading, fetchPaidPacket } from '../utils/pdfGenerator';
 import { captionErrors, type CaseCaption, type FactEntry } from '../utils/pleading';
+import { scanFacts, isHighRisk } from '../utils/redaction';
+import { RedactionWarning } from './RedactionWarning';
 
 interface Props {
   selectedCounty: string;
@@ -26,12 +28,16 @@ export const PacketViewer: React.FC<Props> = ({
   const missing = captionErrors(effectiveCaption);
   const isPaid = Boolean(entitlementToken);
 
+  const redactionHits = scanFacts(facts);
+  const highRiskHits = redactionHits.flatMap((r) => r.findings).filter((f) => isHighRisk(f.kind));
+
   const captionKey = JSON.stringify(effectiveCaption);
   const factsKey = JSON.stringify(facts);
 
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
   const [downloading, setDownloading] = useState(false);
+  const [acknowledgedRedaction, setAcknowledgedRedaction] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -60,8 +66,8 @@ export const PacketViewer: React.FC<Props> = ({
       a.remove();
       // Revoking synchronously can cancel the download in some browsers.
       setTimeout(() => URL.revokeObjectURL(url), 60_000);
-    } catch (err: any) {
-      setDownloadError(err?.message || 'Download failed.');
+    } catch (err) {
+      setDownloadError(err instanceof Error ? err.message : 'Download failed.');
     } finally {
       setDownloading(false);
     }
@@ -88,6 +94,11 @@ export const PacketViewer: React.FC<Props> = ({
             </p>
           </div>
         )}
+        {redactionHits.length > 0 && (
+          <div className="mb-4">
+            <RedactionWarning findings={redactionHits.flatMap((r) => r.findings)} />
+          </div>
+        )}
         <div className="flex justify-center bg-[#09090b] p-4 border border-ink-faint/30">
           <SecureVaultViewer pdfBytes={pdfBytes} />
         </div>
@@ -99,9 +110,14 @@ export const PacketViewer: React.FC<Props> = ({
             <h3 className="font-oswald text-xl text-white uppercase tracking-wide flex items-center gap-2 mb-2">
               <Lock className="w-5 h-5 text-accent" /> Unlock Documents
             </h3>
-            <p className="text-xs text-ink-muted mb-6 leading-relaxed">
-              The preview carries a draft watermark. Purchase the clean packet to download and file it in{' '}
-              {countyName}.
+            <p className="text-xs text-ink-muted mb-4 leading-relaxed">
+              The preview carries a draft watermark. Purchase removes it and renders the clean PDF for
+              filing in {countyName}.
+            </p>
+            <p className="text-[11px] text-yellow-400/90 mb-6 leading-relaxed border border-yellow-500/30 bg-yellow-500/5 p-3">
+              What you get is the <strong>declaration</strong> shown in the preview. It does not include the
+              petition, proposed orders or cover sheets, which generally must be on Washington pattern
+              forms. See <span className="font-mono">Required Forms</span> before buying.
             </p>
 
             <div className="space-y-4">
@@ -133,9 +149,24 @@ export const PacketViewer: React.FC<Props> = ({
             <p className="text-xs text-white mb-6 leading-relaxed">
               Payment confirmed. The clean PDF is rendered by the server against your purchase token.
             </p>
+            {highRiskHits.length > 0 && (
+              <label className="flex gap-2 items-start mb-4 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acknowledgedRedaction}
+                  onChange={(e) => setAcknowledgedRedaction(e.target.checked)}
+                  className="mt-0.5 shrink-0"
+                />
+                <span className="text-[11px] text-ink-muted leading-relaxed">
+                  This packet contains {highRiskHits.length} personal identifier
+                  {highRiskHits.length === 1 ? '' : 's'} that GR 22 generally keeps out of the public file.
+                  I have reviewed them and want to download anyway.
+                </span>
+              </label>
+            )}
             <button
               onClick={handleDownload}
-              disabled={downloading}
+              disabled={downloading || (highRiskHits.length > 0 && !acknowledgedRedaction)}
               className="w-full bg-accent hover:bg-[#00e53a] disabled:opacity-60 text-black font-bold uppercase tracking-widest text-xs py-3 px-4 flex justify-center items-center gap-2 transition-colors cursor-pointer"
             >
               <Download className="w-4 h-4" /> {downloading ? 'Rendering…' : 'Download PDF Packet'}

@@ -2,7 +2,19 @@ import React, { useState } from 'react';
 import { WA_COUNTY_NAMES, getCountyInfo } from '../data/waCounties';
 import { Search, MapPin, Building2, X, AlertTriangle } from 'lucide-react';
 
-export const CountySelectionModal = ({ isOpen, onClose, selectedCounty, onSelectCounty }: any) => {
+interface CountySelectionModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  selectedCounty: string;
+  onSelectCounty: (id: string) => void;
+}
+
+export const CountySelectionModal = ({
+  isOpen,
+  onClose,
+  selectedCounty,
+  onSelectCounty,
+}: CountySelectionModalProps) => {
   const [search, setSearch] = useState('');
 
   if (!isOpen) return null;

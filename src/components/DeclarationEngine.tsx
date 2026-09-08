@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Copy, Plus, Trash2, Check, AlertTriangle } from 'lucide-react';
 import { getCountyName } from '../data/waCounties';
 import { buildDeclarationText, captionErrors, todayLongForm, type CaseCaption, type FactEntry } from '../utils/pleading';
+import { findPersonalIdentifiers } from '../utils/redaction';
+import { RedactionWarning } from './RedactionWarning';
 
 interface Props {
   selectedCounty: string;
@@ -107,6 +109,12 @@ export const DeclarationEngine: React.FC<Props> = ({
 
       <section className="space-y-3">
         <h2 className="font-mono text-[11px] uppercase tracking-wider text-accent">Facts</h2>
+        <p className="text-[11px] text-slate-400 leading-relaxed">
+          Everything you type here goes into the document verbatim. Under GR 22, personal identifiers —
+          social security numbers, account numbers, full dates of birth — belong on the Confidential
+          Information Form, not in a declaration in the public file. Refer to a child by initials where you
+          can.
+        </p>
         {facts.map((fact, idx) => (
           <div key={fact.id} className="bg-slate-900 p-4 border border-slate-700 rounded-lg space-y-2">
             <div className="flex items-center justify-between">
@@ -132,6 +140,7 @@ export const DeclarationEngine: React.FC<Props> = ({
               onChange={(e) => updateFact(fact.id, { desc: e.target.value })}
               className={field}
             />
+            <RedactionWarning findings={findPersonalIdentifiers(fact.desc)} compact />
           </div>
         ))}
         <button

@@ -85,12 +85,20 @@ valid signed token    → 200  application/pdf, no "UNPAID" watermark
 someone else's `uid` and grant them an entitlement. It is now logged as a
 reconciliation hint and explicitly not trusted as authorization.
 
-**Open:** there is still no durable entitlement store. `AuthContext` is a mock
-(`login()` hardcodes `mock-user-123`) and the webhook has nowhere to write. Until
-a real auth provider and a database exist, entitlement lives in the signed token
-in the buyer's `localStorage`, which is transferable between people. That is a
-deliberate trade — it is honest, it is not forgeable, and it is far better than
-what was there — but it is not per-user entitlement.
+**Since fixed:** PayPal is now the system of record instead of a database.
+`POST /api/entitlement/restore` takes an order ID, reads the order back from
+PayPal, confirms it is captured at a catalog price, and signs a fresh token. A
+cleared browser or a second device is no longer a lost sale, and this needs no
+storage layer — which matters on Cloud Run, where a local file store would be
+silently ephemeral.
+
+`AuthContext` is still a stand-in and `hasPurchased` has been removed from it: it
+was a second, unverified source of truth about who had paid. Entitlement
+deliberately does not depend on auth, so wiring a real identity provider later
+does not require re-plumbing the paywall.
+
+**Still open:** the signed token is bearer-style — whoever holds it can use it
+until it expires. Per-user entitlement needs a real identity provider.
 
 ### 1.6 Open Gemini proxy — **CONFIRMED / Fixed**
 
@@ -150,7 +158,8 @@ substitute for authentication.
 | 2.17 | `@types/react` was never installed and `tsconfig` had `strict` off, no `include`, and no `vite/client` types — 4 type errors passed unnoticed | Fixed: strict on, types installed, `tsc --noEmit` clean |
 | 2.18 | `eslint.config.js` imported `@firebase/eslint-plugin-security-rules`, which is not a dependency — `eslint` crashed; `npm run lint` ran `tsc` instead | Fixed: working config; `lint` and `typecheck` are now separate scripts |
 | 2.19 | County modal passed `county.id` (`'king'`) while App's default was `'King'`, so nothing showed as selected initially | Fixed |
-| 2.20 | `DocumentRouter` accepted `selectedCounty` / `onOpenCountyModal` and used neither; mobile users had no county switcher | **Open** — the right-hand pane holding the switcher is `hidden lg:flex`, so on mobile the county cannot be changed at all |
+| 2.20 | `DocumentRouter` accepted `selectedCounty` / `onOpenCountyModal` and used neither; the pane holding the switcher is `hidden lg:flex`, so on mobile the county could not be changed at all | Fixed: county switcher added to the mobile nav; the dead props removed |
+| 2.21 | The bare-nine-digit SSN detector claimed labelled account numbers, so the user got SSN guidance for a bank account (found by the new test suite) | Fixed |
 
 ---
 
@@ -227,25 +236,40 @@ a change in the moving party's own circumstances does not satisfy that element,
 and that is one of the most common reasons a pro se modification fails at
 adequate cause. Both are now questions with their own flags.
 
-### 3.5 Mandatory pattern forms are not addressed — **Open**
+### 3.5 Mandatory pattern forms — **Disclosed; scope decision still yours**
 
 Washington requires approved pattern forms for many family law filings. This app
-generates a free-form pleading. A petition to modify a parenting plan generally
-must be made on the AOC pattern form, not on a document like this one. A
-declaration in support is a legitimate supporting document, which is why the
-Fact Engine now carries a notice saying so — but **the product is currently
-sold as a "Full County Package" and an "e-filing ready packet" while producing
-one supporting declaration.** That gap is a legal-accuracy problem and a refund
-problem. Deciding what the packet should actually contain is your call, not a
-code fix.
+generates a supporting declaration, not the petition, orders or cover sheets. The
+product was nonetheless sold as a "Full County Package" and an "e-filing ready
+packet".
 
-### 3.6 GR 22 redaction is unimplemented — **Open**
+**Fixed the disclosure half:** a new **Required Forms** module states plainly
+what the app produces and what it does not, and links to the AOC forms library;
+the checkout panel now carries the same scope notice *above* the buy buttons
+rather than after purchase. A buyer can no longer reach checkout without being
+told the petition is not included.
 
-`types.ts` declares `gr22RedactionNeeded` and the nav lists "Sealed Exhibits",
-but nothing implements redaction or the confidential information requirements,
-while the Fact Engine invites free-text narration about children. Anything a user
-types goes into the filed document verbatim. At minimum this needs a warning at
-the point of entry; properly, it needs a redaction pass.
+**Still yours to decide:** whether to broaden what the packet contains or narrow
+what it is called. I disclosed the gap; I did not change your pricing or product
+naming, because that is a business decision, not a defect.
+
+### 3.6 GR 22 redaction — **Fixed**
+
+Nothing implemented redaction while the Fact Engine invited free-text narration
+about children, and everything typed went into the filed document verbatim.
+
+`src/utils/redaction.ts` now detects social security numbers, financial account
+and card numbers, driver's license numbers, contextual dates of birth, phone
+numbers and email addresses. It runs in three places:
+
+- **At entry** — each fact box warns live as you type.
+- **Before render** — the packet preview shows a consolidated GR 22 panel.
+- **At download** — identifiers GR 22 names must be explicitly acknowledged
+  before the paid PDF can be downloaded.
+
+It is a lint, not a guarantee: it matches patterns and cannot tell that "my
+daughter Ava" names a minor. The Fact Engine also now tells users to refer to
+children by initials. Covered by 10 unit tests.
 
 ### 3.7 All local rule data is unverified — **Open, now disclosed**
 
@@ -283,20 +307,32 @@ pagination                   60 facts → 5 pages, watermark on all 5
 holiday counting             Thanksgiving + day after 2026 excluded correctly
 ```
 
-Not done: no test suite exists, and I did not add one — that is a larger call
-about the project's direction. `src/utils/deadlineCalculator.ts`,
-`src/utils/waHolidays.ts` and `src/utils/pleading.ts` are pure functions and are
-the obvious first candidates.
+**Test suite added.** 44 tests across `waHolidays`, `deadlineCalculator`,
+`redaction` and `pleading`, run with `npm test` (vitest). They cover the
+regressions this audit found — the literal `\n` in the fact list, the UTC
+date-parse shift, holiday exclusion, backward counting, pagination, the
+RCW 9A.72.085 certification fields, and the absence of the watermark from the
+paid render. Writing them immediately caught one further defect (2.21).
+
+`eslint` is now clean at zero warnings; the remaining `any` types in `server.ts`
+and the component props were replaced with real types.
 
 ---
 
 ## Priority order for what remains
 
-1. **3.5 — mandatory pattern forms.** You are charging for a "packet". Decide
-   what it contains before selling more of them.
-2. **1.5 — real auth + entitlement store.** The mock `AuthContext` is the blocker
-   for per-user purchases and for the webhook doing anything.
-3. **3.7 — verify the three county profiles**, or narrow the product to the
-   counties you can keep current.
-4. **3.6 — GR 22 redaction warning** at the point of data entry.
-5. **2.20 — county switcher on mobile.**
+Everything that could be fixed from here has been. Three items remain, and each
+needs something this environment cannot supply — a decision, a credential, or a
+source I cannot reach.
+
+1. **3.7 — verify the three county profiles.** Blocked on network access from
+   this environment, not on effort. Every deadline is currently flagged
+   `unverified` in the UI. Either check them against the current local rules and
+   flip the flag with a date, or narrow the product to counties you can keep
+   current. This is the item most likely to cause a user real harm.
+2. **3.5 — decide the packet's scope.** The gap is now disclosed everywhere a
+   buyer can see it. What remains is your call: broaden the contents, or rename
+   the product to match them.
+3. **1.5 — real identity provider.** Needed for per-user entitlement and for the
+   webhook to have anywhere meaningful to write. The restore flow removes the
+   urgency; it does not remove the need.
