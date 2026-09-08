@@ -17,10 +17,17 @@ export interface WashingtonCountyInfo {
   hearingDays: string;
   zoomAvailable: boolean;
   eFilingSystem: string;
+  eFilingPortalUrl?: string;
   benchCopiesRule: string;
   facilitatorPhone: string;
   facilitatorOffice: string;
   proceduralNotes: string[];
+  /**
+   * Every local-rule fact in this file is transcribed, not fetched. Until an
+   * entry has been checked against the county's current local rules on a known
+   * date, it stays 'unverified' and the UI says so. See AUDIT.md.
+   */
+  verification: { status: 'verified' | 'unverified'; checkedOn: string | null };
   traps: {
     title: string;
     subtitle: string;
@@ -29,7 +36,50 @@ export interface WashingtonCountyInfo {
   }[];
 }
 
-export const WA_ALL_39_COUNTIES: WashingtonCountyInfo[] = [
+/** All 39 Washington counties, so the picker can distinguish "no data" from "not a county". */
+export const WA_COUNTY_NAMES: { id: string; name: string; countySeat: string }[] = [
+  { id: 'adams', name: 'Adams County', countySeat: 'Ritzville' },
+  { id: 'asotin', name: 'Asotin County', countySeat: 'Asotin' },
+  { id: 'benton', name: 'Benton County', countySeat: 'Prosser' },
+  { id: 'chelan', name: 'Chelan County', countySeat: 'Wenatchee' },
+  { id: 'clallam', name: 'Clallam County', countySeat: 'Port Angeles' },
+  { id: 'clark', name: 'Clark County', countySeat: 'Vancouver' },
+  { id: 'columbia', name: 'Columbia County', countySeat: 'Dayton' },
+  { id: 'cowlitz', name: 'Cowlitz County', countySeat: 'Kelso' },
+  { id: 'douglas', name: 'Douglas County', countySeat: 'Waterville' },
+  { id: 'ferry', name: 'Ferry County', countySeat: 'Republic' },
+  { id: 'franklin', name: 'Franklin County', countySeat: 'Pasco' },
+  { id: 'garfield', name: 'Garfield County', countySeat: 'Pomeroy' },
+  { id: 'grant', name: 'Grant County', countySeat: 'Ephrata' },
+  { id: 'grays-harbor', name: 'Grays Harbor County', countySeat: 'Montesano' },
+  { id: 'island', name: 'Island County', countySeat: 'Coupeville' },
+  { id: 'jefferson', name: 'Jefferson County', countySeat: 'Port Townsend' },
+  { id: 'king', name: 'King County', countySeat: 'Seattle' },
+  { id: 'kitsap', name: 'Kitsap County', countySeat: 'Port Orchard' },
+  { id: 'kittitas', name: 'Kittitas County', countySeat: 'Ellensburg' },
+  { id: 'klickitat', name: 'Klickitat County', countySeat: 'Goldendale' },
+  { id: 'lewis', name: 'Lewis County', countySeat: 'Chehalis' },
+  { id: 'lincoln', name: 'Lincoln County', countySeat: 'Davenport' },
+  { id: 'mason', name: 'Mason County', countySeat: 'Shelton' },
+  { id: 'okanogan', name: 'Okanogan County', countySeat: 'Okanogan' },
+  { id: 'pacific', name: 'Pacific County', countySeat: 'South Bend' },
+  { id: 'pend-oreille', name: 'Pend Oreille County', countySeat: 'Newport' },
+  { id: 'pierce', name: 'Pierce County', countySeat: 'Tacoma' },
+  { id: 'san-juan', name: 'San Juan County', countySeat: 'Friday Harbor' },
+  { id: 'skagit', name: 'Skagit County', countySeat: 'Mount Vernon' },
+  { id: 'skamania', name: 'Skamania County', countySeat: 'Stevenson' },
+  { id: 'snohomish', name: 'Snohomish County', countySeat: 'Everett' },
+  { id: 'spokane', name: 'Spokane County', countySeat: 'Spokane' },
+  { id: 'stevens', name: 'Stevens County', countySeat: 'Colville' },
+  { id: 'thurston', name: 'Thurston County', countySeat: 'Olympia' },
+  { id: 'wahkiakum', name: 'Wahkiakum County', countySeat: 'Cathlamet' },
+  { id: 'walla-walla', name: 'Walla Walla County', countySeat: 'Walla Walla' },
+  { id: 'whatcom', name: 'Whatcom County', countySeat: 'Bellingham' },
+  { id: 'whitman', name: 'Whitman County', countySeat: 'Colfax' },
+  { id: 'yakima', name: 'Yakima County', countySeat: 'Yakima' },
+];
+
+export const COUNTY_PROFILES: WashingtonCountyInfo[] = [
   {
     id: 'king',
     name: 'King County',
@@ -49,11 +99,13 @@ export const WA_ALL_39_COUNTIES: WashingtonCountyInfo[] = [
     hearingDays: 'Monday through Friday at 1:30 PM (Virtual / Zoom)',
     zoomAvailable: true,
     eFilingSystem: 'King County E-Court Portal',
+    eFilingPortalUrl: 'https://dja-prd-ecexap1.kingcounty.gov/',
     benchCopiesRule: 'Must file formal Working Papers Submission List',
     facilitatorPhone: '(206) 263-8100',
     facilitatorOffice: '516 3rd Ave Room W-382 (Seattle)',
     proceduralNotes: ['Split between Seattle and Kent.'],
-    traps: []
+    verification: { status: 'unverified', checkedOn: null },
+    traps: [],
   },
   {
     id: 'pierce',
@@ -74,11 +126,13 @@ export const WA_ALL_39_COUNTIES: WashingtonCountyInfo[] = [
     hearingDays: 'Monday through Friday mornings',
     zoomAvailable: true,
     eFilingSystem: 'Pierce County LINX System',
+    eFilingPortalUrl: 'https://linxonline.co.pierce.wa.us/linxweb/Main.cfm',
     benchCopiesRule: 'Submitted electronically via LINX',
     facilitatorPhone: '(253) 798-3627',
     facilitatorOffice: '930 Tacoma Ave S, Room 108',
     proceduralNotes: ['Pierce County uses LINX for all filings.'],
-    traps: []
+    verification: { status: 'unverified', checkedOn: null },
+    traps: [],
   },
   {
     id: 'snohomish',
@@ -99,19 +153,47 @@ export const WA_ALL_39_COUNTIES: WashingtonCountyInfo[] = [
     hearingDays: 'Tuesday & Thursday',
     zoomAvailable: true,
     eFilingSystem: 'Odyssey File & Serve',
+    eFilingPortalUrl: 'https://washington.tylerhost.net/ofsweb',
     benchCopiesRule: 'Prominently labeled',
     facilitatorPhone: '(425) 388-3781',
     facilitatorOffice: '3000 Rockefeller Ave',
     proceduralNotes: [],
-    traps: []
-  }
+    verification: { status: 'unverified', checkedOn: null },
+    traps: [],
+  },
 ];
 
-export function getCountyInfo(countyNameOrId: string): WashingtonCountyInfo {
-  const norm = (countyNameOrId || '').toLowerCase().replace(/ county/g, '').trim();
-  const found = WA_ALL_39_COUNTIES.find(
-    c => c.id === norm || c.shortName.toLowerCase() === norm || c.name.toLowerCase().includes(norm)
-  );
-  return found || WA_ALL_39_COUNTIES.find(c => c.id === 'king')!;
+function normalize(input: string): string {
+  return (input || '').toLowerCase().replace(/ county/g, '').replace(/\s+/g, '-').trim();
 }
-export const WA_COUNTIES = WA_ALL_39_COUNTIES;
+
+/**
+ * Returns the profile for a county, or null when no profile exists.
+ *
+ * This deliberately does NOT fall back to King County. Showing a Spokane filer
+ * King County's working-copies deadline and facilitator phone number as if they
+ * were their own is a missed-deadline waiting to happen.
+ */
+export function getCountyInfo(countyNameOrId: string): WashingtonCountyInfo | null {
+  const norm = normalize(countyNameOrId);
+  if (!norm) return null;
+  return (
+    COUNTY_PROFILES.find(
+      (c) => c.id === norm || normalize(c.shortName) === norm || normalize(c.name) === norm,
+    ) || null
+  );
+}
+
+/** Display name for any of the 39 counties, whether or not a profile exists. */
+export function getCountyName(countyNameOrId: string): string {
+  const norm = normalize(countyNameOrId);
+  return WA_COUNTY_NAMES.find((c) => c.id === norm)?.name || countyNameOrId;
+}
+
+export function hasCountyProfile(countyNameOrId: string): boolean {
+  return getCountyInfo(countyNameOrId) !== null;
+}
+
+export const WA_COUNTIES = COUNTY_PROFILES;
+/** @deprecated Only 3 of the 39 counties have profiles; the old name was a lie. */
+export const WA_ALL_39_COUNTIES = COUNTY_PROFILES;

@@ -3,8 +3,12 @@ import { Document, Page, pdfjs } from 'react-pdf';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 
-// Set worker to enable canvas rendering
-pdfjs.GlobalWorkerOptions.workerSrc = `//unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
+// Bundle the worker instead of pulling it from a third-party CDN at runtime:
+// an outage or a version skew there takes the document viewer down with it.
+pdfjs.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.mjs',
+  import.meta.url,
+).toString();
 
 interface SecureVaultViewerProps {
   pdfBytes: Uint8Array | null;
@@ -39,15 +43,16 @@ export const SecureVaultViewer: React.FC<SecureVaultViewerProps> = ({ pdfBytes }
         onLoadSuccess={({ numPages }) => setNumPages(numPages)}
         loading={<div className="text-white p-4 font-mono text-xs animate-pulse">Loading Secure Vault...</div>}
       >
-        {Array.from(new Array(numPages), (el, index) => (
-          <Page 
-            key={`page_${index + 1}`} 
-            pageNumber={index + 1} 
-            renderTextLayer={false} 
-            renderAnnotationLayer={false} 
-            className="mb-4 shadow-[0_0_15px_rgba(0,0,0,0.5)] border border-ink-faint rounded"
-            width={600}
-          />
+        {Array.from(new Array(numPages), (_el, index) => (
+          <div key={`page_${index + 1}`}>
+            <Page
+              pageNumber={index + 1}
+              renderTextLayer={false}
+              renderAnnotationLayer={false}
+              className="mb-4 shadow-[0_0_15px_rgba(0,0,0,0.5)] border border-ink-faint rounded"
+              width={600}
+            />
+          </div>
         ))}
       </Document>
       

@@ -1,6 +1,8 @@
 {
-  "name": "",
-  "description": "",
+  "name": "WA Pro Se Builder",
+  "description": "Procedural document workspace for self-represented family law litigants in Washington State.",
   "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
 }
