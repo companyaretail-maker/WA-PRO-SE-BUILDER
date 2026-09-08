@@ -1,8 +1,22 @@
-import firebaseRulesPlugin from '@firebase/eslint-plugin-security-rules';
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import globals from 'globals';
 
-export default [
+export default tseslint.config(
+  { ignores: ['dist/**', 'node_modules/**', '**/*.cjs'] },
+  js.configs.recommended,
+  ...tseslint.configs.recommended,
   {
-    ignores: ['dist/**/*', 'node_modules/**/*']
+    files: ['**/*.{ts,tsx}'],
+    languageOptions: {
+      globals: { ...globals.browser, ...globals.node },
+      parserOptions: { ecmaFeatures: { jsx: true } },
+    },
+    rules: {
+      // `any` is pervasive in the inherited component props; tightening it is a
+      // separate pass, not something to fail the build over today.
+      '@typescript-eslint/no-explicit-any': 'warn',
+      '@typescript-eslint/no-unused-vars': ['warn', { argsIgnorePattern: '^_' }],
+    },
   },
-  firebaseRulesPlugin.configs['flat/recommended']
-];
+);

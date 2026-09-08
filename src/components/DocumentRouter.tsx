@@ -8,6 +8,7 @@ export const MODULES = [
   { id: 'screener', title: 'Statutory Gate', icon: ShieldCheck, badge: 'Step 1' },
   { id: 'declaration', title: 'Fact Engine', icon: FileText, badge: 'Core' },
   { id: 'packet', title: 'Court Packet', icon: BookOpen, badge: 'Packet' },
+  { id: 'forms', title: 'Required Forms', icon: FileText, badge: 'Scope' },
   { id: 'summons', title: 'Summons Engine', icon: Clock, badge: 'CR 4' },
   { id: 'service', title: 'Proof of Service', icon: CheckCircle2, badge: 'CR 4(c)' },
   { id: 'hearing', title: 'Note Docket', icon: Calendar, badge: 'Docket' },
@@ -21,10 +22,12 @@ export const MODULES = [
   { id: 'facilitators', title: 'Facilitators', icon: Building2, badge: 'Directory' }
 ];
 
-export const DocumentRouter: React.FC<any> = ({
-  activeModule,
-  onSelectModule,
-}) => {
+interface DocumentRouterProps {
+  activeModule: string;
+  onSelectModule: (id: string) => void;
+}
+
+export const DocumentRouter: React.FC<DocumentRouterProps> = ({ activeModule, onSelectModule }) => {
   return (
     <div className="flex lg:flex-col items-center lg:items-stretch gap-1.5 overflow-x-auto lg:overflow-x-visible pb-1 lg:pb-0 scrollbar-thin p-2 lg:p-0">
       {MODULES.map(mod => {

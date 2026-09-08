@@ -1,10 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { MessageSquare, X, Send, Bot, User } from 'lucide-react';
 
+interface ChatMessage {
+  role: 'user' | 'model';
+  parts: { text: string }[];
+}
+
 export const LegalAssistantChat = () => {
   const [isOpen, setIsOpen] = useState(false);
-  const [messages, setMessages] = useState<{role: 'user' | 'model', parts: [{text: string}]}>([
-    { role: 'model', parts: [{ text: "Hello. I am the WA Pro Se Legal Assistant. I can help guide you through procedural steps or general family law concepts in Washington State. I cannot provide legal advice. How can I assist you today?" }] }
+  const [messages, setMessages] = useState<ChatMessage[]>([
+    { role: 'model', parts: [{ text: "Hello. I am the WA Pro Se Legal Assistant. I can help guide you through procedural steps or general family law concepts in Washington State. Under GR 24 I cannot apply the law to your facts, tell you whether you have a case, or predict what a judge will do. How can I help with procedure?" }] }
   ]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -19,7 +24,7 @@ export const LegalAssistantChat = () => {
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
     
-    const newMessages = [...messages, { role: 'user', parts: [{ text: input.trim() }] }] as any;
+    const newMessages: ChatMessage[] = [...messages, { role: 'user', parts: [{ text: input.trim() }] }];
     setMessages(newMessages);
     setInput('');
     setIsLoading(true);
@@ -28,16 +33,18 @@ export const LegalAssistantChat = () => {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ history: newMessages })
+        // The canned greeting is a model turn; Gemini rejects a history that opens
+        // on one, so it stays on screen but never goes over the wire.
+        body: JSON.stringify({ history: newMessages.filter((m, i) => !(i === 0 && m.role === 'model')) })
       });
       const data = await res.json();
       
-      if (data.text) {
+      if (res.ok && data.text) {
         setMessages([...newMessages, { role: 'model', parts: [{ text: data.text }] }]);
       } else {
-        setMessages([...newMessages, { role: 'model', parts: [{ text: "Error: Unable to connect to inference engine." }] }]);
+        setMessages([...newMessages, { role: 'model', parts: [{ text: data.error || "The assistant could not answer that request." }] }]);
       }
-    } catch (err) {
+    } catch {
       setMessages([...newMessages, { role: 'model', parts: [{ text: "Error: Network failure." }] }]);
     } finally {
       setIsLoading(false);
